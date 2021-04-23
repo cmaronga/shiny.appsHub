@@ -1,5 +1,7 @@
-# shiny.appsHub
-This repository contains a collection of shiny apps that I create as pet projects/for fun. Feel free to use the codes and ideas but please acknowledge me
+# Shiny applications hub
+This repository contains a collection of shiny apps that I create as pet projects/for fun. Feel free to use the codes and ideas but please acknowledge the effort.
+
+Mos are done with open source datasets and can be reproduced but a few are built using secured data and only code is available and NO data for reproducibility.
 
 
 ## Catalogue of shiny applications
