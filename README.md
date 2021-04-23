@@ -8,5 +8,5 @@ Most are done with open source datasets and can be reproduced but a few are buil
 
 | S/N | Date_Built | Datataset | Data_source | Description
 | :---: | :---: | :--- | :--- | :---|
-| 1 | `2021-04-23` | [CRAN Available packages](https://cran.r-project.org/web/packages/available_packages_by_date.html) | [CRAN Repository](https://cran.r-project.org/) |List of all available CRAN packages. Did webscraping using `rvest` to get list of packages and date of publication from `CRAN`|
+| 1 | `2021-04-23` | [CRAN Available packages](https://cran.r-project.org/web/packages/available_packages_by_date.html) | [CRAN Repository](https://cran.r-project.org/) |Exploring list of published packages into CRAN|
 
