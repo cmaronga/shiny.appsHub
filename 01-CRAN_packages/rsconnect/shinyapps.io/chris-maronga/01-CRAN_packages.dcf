@@ -1,0 +1,12 @@
+name: 01-CRAN_packages
+title: 01-CRAN_packages
+username:
+account: chris-maronga
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 4020311
+bundleId: 4510393
+url: https://chris-maronga.shinyapps.io/01-CRAN_packages/
+when: 1619194368.97608
+asMultiple: FALSE
+asStatic: FALSE
