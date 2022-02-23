@@ -1,0 +1,262 @@
+---
+title: "NeoBAC Weekly Report"
+output:
+  html_document:
+    df_print: paged
+  pdf_document: default
+params:
+  start_date_rmd: NA
+  end_date_rmd: NA
+always_allow_html: true
+
+---
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      message = FALSE,
+                      warning = FALSE)
+library(tidyverse)
+library(data.table)
+library(here)
+library(pander)
+library(janitor)
+library(knitr)
+
+
+
+```
+
+
+```{r}
+start_date <- params$start_date_rmd %>% as.Date()
+end_date <- params$end_date_rmd %>% as.Date()
+
+## test Dates
+#start_date <- "2020-06-21" %>% as.Date()
+#end_date <- Sys.Date() %>% as.Date()
+
+#setorder(mydates, -dates)
+
+
+```
+
+# All  Neobac 
+
+## Demographic characteristics
+
+```{r}
+setDT(final_demoTable) 
+
+final_demoTable <- final_demoTable[metric != "Age (days) - Mean±SD" ]
+kable(final_demoTable)
+```
+
+## Distribution of age
+
+```{r, fig.width=9, fig.height=5, dpi=1000}
+
+
+age <- neobac_ids_report[age_days >=0] 
+xbrks_age <- seq(from = 0, to = 30, by = 5)
+age[, age_days := as.factor(age_days)]
+ggplot(data = age, aes(age_days))+
+  labs(title = "Distribution of age", x = "Age (days)", y = "Frequency")+
+  geom_bar()+
+  theme_hc()
+  #scale_x_continuous(breaks = xbrks_age )
+```
+\newpage
+
+
+## Study Flow diagram
+
+```{r,  out.width='100%', dpi = 1000}
+ # saved graph as png in current working directory
+overall_chart_path <- paste0(mwd, "/overall_chart.png")
+knitr::include_graphics(overall_chart_path)
+```
+
+
+
+## Summary of all admission blood  cultures taken
+
+```{r}
+
+blood_culture_report[, .(freq = .N), by = .(site, bac_positive)] %>%
+  pivot_wider(names_from = site, values_from = freq ) %>%
+  adorn_totals(where = c("col", "row")) %>%
+  pander()
+```
+
+
+## Number Collected before and After Antibiotics
+
+```{r}
+
+blood_culture_report[, .(freq = .N), by = .(site, receive_antibio_adm_b4_bld)] %>%
+   pivot_wider(names_from = receive_antibio_adm_b4_bld, values_from = freq ) %>%
+  adorn_totals(where = c("col", "row")) %>%
+  pander()
+```
+
+
+## Contamination rate
+
+```{r, fig.width=8, fig.height=5, dpi=600}
+y_brks = seq(from = 0, to = max(tab1$Perc), by = 5)
+gg_conta_rate <- ggplot(tab1, aes(date_collect, Perc, color = site)) +
+  theme_hc()+
+  geom_line(size = 1) +
+  labs(y = "Percentage", x = "Month", title =  "Blood cultures contamination rate per site")+
+  scale_x_date(date_labels = "%b-%y", date_breaks = "1 month")+
+  scale_y_continuous(breaks = y_brks)+
+  scale_color_hc()
+  # geom_text(aes(date_collect, Perc,label = Perc), position = position_dodge(width = 15),
+  #           vjust = 0.05, hjust = 0.5)
+
+gg_conta_rate
+```
+
+
+\newpage
+
+## All Organisms Identified
+
+```{r}
+ast_org <- merge(blood_culture_report[, .(pk_specimen_id, site)],
+                  ast_report, by = "pk_specimen_id")
+
+
+ast_org_all <- ast_org[, .(serial_study_id, site,  pk_isolate,
+                         pk_specimen_id, species_full_name, type)]
+
+ast_org_all_sum <- ast_org_all[, .(Number_isolates = .N),
+                                 by = .(type, species_full_name)]
+
+setorder(ast_org_all_sum, -type, -Number_isolates)
+
+kable(ast_org_all_sum)
+```
+
+
+\newpage
+
+## AST Results 
+
+```{r}
+tab_antibiotics <- AST_sm[, .(freq = .N), 
+                          by = .(site, species_full_name, drug_tested, resistance_result) ] %>%
+  pivot_wider(names_from = resistance_result, 
+              values_from = freq) %>% setDT()
+
+tab_antibiotics[["NA"]] = NULL
+nms_anti <- c("R", "S", "I")
+tab_antibiotics[, (nms_anti) := lapply(.SD, function(x) ifelse(is.na(x), 0, x)), .SDcols = nms_anti]
+tab_antibiotics[, sum_all := Reduce(`+`, .SD), .SDcols = nms_anti]
+tab_antibiotics <- tab_antibiotics[sum_all > 0]
+tab_antibiotics[, sum_all := NULL]
+anti_id <- c("site", "species_full_name", "drug_tested")
+tab_antibiotics_m <- melt(tab_antibiotics, id.vars = anti_id,
+                          variable.name = c("resisistance"))
+
+tab_antibiotics_m1 <- tab_antibiotics_m %>%
+  pivot_wider(names_from = drug_tested, values_from = value)
+
+ast_path <- paste0(mwd, "/lab_datasets/ast_resistance.csv")
+setorder(tab_antibiotics_m1 ,species_full_name )
+write.csv(tab_antibiotics_m1,
+          file = ast_path, row.names = F,
+          na = "")
+
+#pander(tab_antibiotics)
+```
+
+## AST Plots
+
+
+```{r, fig.width=8, fig.height=5, dpi = 600}
+
+library(viridis)
+tab_ast_list <- split(tab_antibiotics_m ,
+                      f = list( tab_antibiotics_m$species_full_name))
+
+cond <- lapply(tab_ast_list, function(x) nrow(x) > 0) %>%
+  unlist()
+
+tab_ast_list <- tab_ast_list[cond]
+
+plot_list1 <- list()
+for (i in 1:length(tab_ast_list)) {
+  this = tab_ast_list[[i]]
+  nm = this[, unique(species_full_name)]
+  plot_list1[[i]] <-  ggplot(this, aes(drug_tested, value, fill = resisistance))+
+    geom_bar(stat = "identity") +
+    facet_wrap(~site, ncol = 1, scales = "free_y")+
+    scale_fill_viridis_d()+
+    labs(title = nm)+
+    theme_plot()+
+    theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+}
+
+plot_list1
+
+```
+
+# NeoBAC report for dates `r start_date` to `r end_date`
+
+## Blood culture collected 
+
+
+```{r}
+bld_week <- blood_culture_report[between(date_collect, start_date, end_date)]
+bld_week[, .(freq = .N), by = .(site, bac_positive)] %>%
+  pivot_wider(names_from = site, values_from = freq ) %>%
+  adorn_totals(where = c("col", "row")) %>%
+  pander()
+```
+
+## Number Collected before and After Antibiotics
+
+```{r}
+
+bld_week[, .(freq = .N), by = .(site, receive_antibio_adm_b4_bld)] %>%
+   pivot_wider(names_from = receive_antibio_adm_b4_bld, values_from = freq ) %>%
+  adorn_totals(where = c("col", "row")) %>%
+  pander()
+```
+
+
+
+## Organisms 
+
+```{r}
+ast_week <- merge(bld_week[, .(pk_specimen_id, site)],
+                  ast_report, by = "pk_specimen_id")
+
+
+ast_week_all <- ast_week[, .(serial_study_id, site,  pk_isolate,
+                         pk_specimen_id, species_full_name, type)]
+
+ast_week_all_sum <- ast_week_all[, .(Number_isolates = .N),
+                                 by = .(type, species_full_name)]
+
+setorder(ast_week_all_sum, -type, -Number_isolates)
+kable(ast_week_all)
+```
+
+## AST results all results
+
+- Download table from NeoBAC App
+
+```{r, eval=FALSE, include=FALSE}
+2+2
+# ast_pthogens <- ast_week[type == "Pathogen"] %>% 
+#   select(serial_study_id, pk_isolate,
+#          pk_specimen_id, species_full_name, esbl, contains("s_"))
+# 
+# kable(ast_pthogens)
+
+```
+
