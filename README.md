@@ -8,13 +8,13 @@ Most are done with open source datasets and can be reproduced but a few are buil
 
 | Date completion | Name              | Data available | Description                                    |
 |-----------------|-------------------|----------------|------------------------------------------------|
-| 2017-12-06      | ClinicalReports   | No             |                                                |
-| 2017-12-12      | ClinicalQCs       | No             |                                                |
-| 2018-02-14      | LabQueries        | No             |                                                |
-| 2018-11-23      | CurationQCs       | No             |                                                |
-| 2019-02-21      | ClinicalReports2  | No             |                                                |
-| 2019-08-03      | CurationViz       | No             |                                                |
-| 2020-11- 03     | CRANPackages      | Yes            | Exploring list of published packages into CRAN |
-| 2020-11-21      | NewLabReports     | No             |                                                |
-| 2020-12-04      | (SubStudyReports) | No             |                                                |
-| 2021-04-14      | SampleRepo        | No             |                                                |
+| 2017-12-06      | [ClinicalReports](https://github.com/ChristopherMaronga/shiny.appsHub/tree/main/ClinicalReports)   | No             |                                                |
+| 2017-12-12      | [ClinicalQCs](https://github.com/ChristopherMaronga/shiny.appsHub/tree/main/ClinicalQCs)       | No             |                                                |
+| 2018-02-14      | [LabQueries](https://github.com/ChristopherMaronga/shiny.appsHub/tree/main/LabQueries)       | No             |                                                |
+| 2018-11-23      | [CurationQCs](https://github.com/ChristopherMaronga/shiny.appsHub/tree/main/CurationQCs)       | No             |                                                |
+| 2019-02-21      | [ClinicalReports2](https://github.com/ChristopherMaronga/shiny.appsHub/tree/main/ClinicalReports2)  | No             |                                                |
+| 2019-08-03      | [CurationViz](https://github.com/ChristopherMaronga/shiny.appsHub/tree/main/CurationViz)      | No             |                                                |
+| 2020-11- 03     | [CRANPackages](https://github.com/ChristopherMaronga/shiny.appsHub/tree/main/CRANPackages)     | Yes            | Exploring list of published packages into CRAN |
+| 2020-11-21      | [NewLabReports](https://github.com/ChristopherMaronga/shiny.appsHub/tree/main/NewLabReports)    | No             |                                                |
+| 2020-12-04      | [SubStudyReports](https://github.com/ChristopherMaronga/shiny.appsHub/tree/main/SubStudyReports) | No             |                                                |
+| 2021-04-14      | [SampleRepo](https://github.com/ChristopherMaronga/shiny.appsHub/tree/main/SampleRepo)       | No             |                                                |
