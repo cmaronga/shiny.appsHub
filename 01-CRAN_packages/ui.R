@@ -32,7 +32,7 @@ body_contents <- dashboardBody(
                   tags$hr(),
                   
                   selectInput("year", "Select year (Table ONLY):",
-                              choices = c("All time", unique(CRAN_pkgs$year_published)),
+                              choices = c("All time", sort(unique(CRAN_pkgs$year_published), decreasing = TRUE)),
                               selected = "All time"),
                   
                   textOutput("pkg_statement"),
