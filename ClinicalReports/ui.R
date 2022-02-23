@@ -282,19 +282,6 @@ tabPanel("About Dashboard",                          # Information about data av
 #            
 #            tabPanel("Weekly screening info."),
 #            
-# tabPanel("About Dashboard",                          # Information about data availability for this dashboard.
-#                     h4("Datasets are auto updated after every 30 minutes, 24 hrs daily."),
-#                     br(),
-#                     h5("Any questions or comments can be sent to:"),
-#                     h5("1. Narshion Ngao - Senior Data Manager: ") ,
-#                     h5(a("nngao@kemri-wellcome.org", href="nngao@kemri-wellcome.org")),
-#                     tags$hr(),
-#                     h5("2. Christopher Maronga - Clinical Data Manager: ") ,
-#                     h5(a("cmaronga@kemri-wellcome.org", href="cmaronga@kemri-wellcome.org")),
-#                     tags$hr(),
-#                     h5("3. Eric Owino - Lab Data Manager: ") ,
-#                     h5(a("eowino@kemri-wellcome.org", href="cmaronga@kemri-wellcome.org")),
-#                     tags$hr())
 # )
 
 )## End of navigation bar//// No code beyond here

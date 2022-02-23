@@ -6,10 +6,8 @@ require(shinythemes)
 require(tidyr)
 require(ggplot2)
 library(scales)
-library(ggplot2)
 library(RColorBrewer)
 library(stringr)
-require(tidyr)
 library(data.table)
 
 

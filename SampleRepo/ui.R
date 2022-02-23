@@ -352,8 +352,6 @@ ui <- dashboardPage(header_contents,
               sidebar_contents,
               body_contentds,
               controlbar = dashboardControlbar(collapsed = T, skinSelector())
-              # footer = dashboardFooter(left = "Created by: NeOBAC Data Team",
-              #                          right = " Data sources : NeOBAC-CIN databases")
               )
 
 # -------------------------------------------------------------------------

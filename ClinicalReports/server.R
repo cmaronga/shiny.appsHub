@@ -17,7 +17,7 @@ library(leaflet)
 library(data.table)
 
 ##### SERVER SIDE FUNCTION STARTS HERE ---------------
-server= function(input,output){
+server = function(input,output){
 ## Small preparation of the dataset -----------
 
 
@@ -30,7 +30,7 @@ server= function(input,output){
   fit_all <- do.call(survfit,list(formula=Surv(ftime_all,status) ~ categ_enrol,data = filter(surv_data,ftime_all > 0 & ftime_all <=200)))
   
   ## Fit the survival curve for all mortalities 
-  fit_pdm <- do.call(survfit,list(formula=Surv(ftime_pdm,status) ~ categ_enrol,data = filter(surv_data,ftime_pdm > 0 & ftime_pdm <=180)))
+  fit_pdm <- do.call(survfit, list(formula=Surv(ftime_pdm,status) ~ categ_enrol,data = filter(surv_data,ftime_pdm > 0 & ftime_pdm <=180)))
  
   chaindata$adm_sex <- factor(chaindata $adm_sex, levels=c(1,2),
                               labels=c("Male", "Female")) 
