@@ -50,7 +50,8 @@ cran_pkg_date <- data.frame(
 
 # + Available packages
 
-available_pks <- available.packages()[, c("Version",
+available_pks <- available.packages(#repos = "http://cran.us.r-project.org", 
+                                    repos = "https://cran.r-project.org/")[, c("Version",
                          "Depends",
                          "Repository", 
                          "NeedsCompilation",
@@ -66,7 +67,6 @@ CRAN_pkgs <- available_pks %>%
   mutate(
     year_published = lubridate::year(date_published)
   )
-
 
 
 

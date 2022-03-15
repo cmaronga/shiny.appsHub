@@ -1,4 +1,4 @@
-
+library(tidyverse)
 # Define header
 header_contents <- dashboardHeader(
   title = "Exploring CRAN packages",
