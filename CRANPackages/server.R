@@ -1,4 +1,3 @@
-library(tidyverse)
 
 # create function to download tables
 # call the function like 'download_DT()' at end of the table
@@ -15,7 +14,6 @@ download_DT <- function(x) {
     )
   )
 }
-
 
 
 
