@@ -1,0 +1,1045 @@
+---
+title: \vspace{6cm} \LARGE <center><strong> PFC Benefit and Budget Impact Calculator </strong></center>
+date: <center><strong> `r format(Sys.Date(), '%d %B %Y')` </strong></center>
+geometry: "left = 1cm, right = 1cm, top = 1.8cm, bottom = 2.5cm"
+output:
+  pdf_document:
+    toc_depth: 5
+    number_sections: true
+    df_print: paged
+params:
+  country_name: NA
+  scenario_type: NA
+  dbase_path: NA
+---
+
+
+\centering
+\raggedright
+\newpage
+\tableofcontents
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = F, 
+                      message = F,
+                      echo = F, 
+                      eval = T,
+                      dpi = 180, fig.width = 11, fig.height = 7, 
+                      comment = " ")
+
+## --- Define country and scenario
+# country <- "Russia"
+#scenario_run <- "FLS_Basecase"
+
+scenario_run <- params$scenario_type
+country <- params$country_name
+active.dr <- params$dbase_path
+# model scenarios -
+# "FLS_Basecase"                      
+# "FLS_Identification_100"            
+# "FLS_Treatment_initiation_one_month"
+# "FLS_Monitoring_100"                
+# "FLS_Alendronate_only"              
+# "FLS_Injectables_only"              
+# "FLS_Injectables_only.max_reduction"
+# "FLS_Adherence_100"                 
+# "FLS_Perfect_FLS"                   
+# "FLS_Hips_and_spines_only"          
+# "FLS_Hips_only"
+
+
+```
+
+```{r load-packages}
+# Install and load packages
+if (!require(pacman)) install.packages("pacman")
+
+pacman::p_load(
+  tidyverse, ggeasy, here, kableExtra,
+  data.table, scales, ggthemes, ggpubr,
+  googlesheets4, pander, RColorBrewer, patchwork, 
+  readxl, DBI, RSQLite, data.table
+)
+
+# Define the default theme for all plots
+theme_set(theme_hc(base_size = 15))
+
+# generate subtitle for inputs
+input_title <- str_replace_all(params$scenario_type, 
+                             pattern = "_", 
+                             replacement = " ") # use scenario name and remove underscores to create subtitle
+
+```
+
+
+\
+\
+\
+
+
+\newpage
+
+
+---
+author: "Country: `r country`"
+---
+
+
+```{r my-functions}
+# 1. Function to transform a dataframe (pivot_longer, then pivot wider)
+# mostly the tables from the PFC model outputs
+
+df_transform <- function(d_frame, 
+                         names_col = "metric"){
+ #takes a table and double-transforms it 
+d_frame %>% 
+  pivot_longer(cols = -1, names_to = {{names_col}}, 
+               values_to = "vals") %>% 
+  pivot_wider(names_from = 1, 
+              values_from = 3)
+}
+
+# 2. Function to help print nice numeric output
+nice_numOut <- function(dframe){
+  dframe %>% 
+    mutate_if(is.numeric, ~ comma(.)) %>% 
+    mutate_at(vars(ncol(dframe)), ~ sub("\\.\\d+$", "", .)) # just to make sure
+                                                            # last column has no decimal points
+}
+
+# Function to list fields and get data
+CollectGsheetData_rmd <- function(connection = "Genericcountry",
+                              table_name = "FLS_Basecase",
+                              na.rm.value = TRUE){
+  # # store scenario name on the global enviroment
+  # scenarioName <<- table_name
+  
+  
+  
+  # create a connection
+  tbl_conn <- dbConnect(SQLite(),
+                             paste0(active.dr,"/inputs_databases/",connection, ".db"))
+  # glance at the data
+  if(na.rm.value == TRUE){
+    tbl(tbl_conn, table_name) %>% filter(!is.na(Value))
+  } else {
+    tbl(tbl_conn, table_name)
+  }
+
+}
+
+```
+
+
+```{r inputs-reading, message=FALSE}
+#------------------------------------------------------------------------------------------------------------------
+# generic data reading based on country above
+
+model.inputs_SQL <- CollectGsheetData_rmd(connection = str_replace(country, # define connection
+                                              pattern = " ",
+                                              replacement = ""),
+                  table_name = scenario_run,
+                  na.rm.value = FALSE) %>%
+  collect() %>% tibble::rowid_to_column(var = "row.index")
+
+# identify rows that have all NAs
+miss_rows_SQL <- model.inputs_SQL %>% 
+  filter_at(vars(c(Input,name, Description, Value)),
+            all_vars(is.na(.)))
+
+# remove the all NA rows and also rows after "Risk of Mortality"
+after.risk.rows <- c(599:753)
+
+model.inputs_SQL <- model.inputs_SQL[-c(miss_rows_SQL$row.index), ] %>% select(-1) %>% as_tibble()
+
+# -- Reading costs inputs
+
+# cost_country <- paste(country, "costs")
+# 
+# 
+# costs.inputs<-  read_sheet("https://docs.google.com/spreadsheets/d/1CA4y892IxzgU2S9Z5qbqBt-aG8dULt8B6uQIjQGAN-U/edit?usp=sharing",
+#                            sheet= cost_country,
+#                            range = "A1:E304",
+#                            col_types= "c") %>% tibble::rowid_to_column(var = "row.index")
+
+costs.inputs <- CollectGsheetData_rmd(connection = str_replace(country, # define connection
+                                              pattern = " ",
+                                              replacement = ""),
+                  table_name = scenario_run,
+                  na.rm.value = FALSE) %>%
+  collect() %>% filter(category == "Cost values") %>% 
+  tibble::rowid_to_column(var = "row.index") %>% select(-category)
+
+# # identify rows that have all NAs
+# miss_rowsCosts <- costs.inputs %>% 
+#   filter_at(vars(c(Input,name, Description, Value)),
+#             all_vars(is.na(.)))
+
+costs.inputs <- costs.inputs %>% select(-c(1, 3)) %>% as_tibble()
+
+# rows to style
+cost_rows <- costs.inputs %>% tibble::rowid_to_column(var = "row.index") %>% filter(is.na(Description)) %>% pull(row.index)
+
+# ---------------------------------------------------------------------------------
+# Reading general inputs (applicable to all countries)
+
+# general.inputs<-  read_sheet("https://docs.google.com/spreadsheets/d/1CA4y892IxzgU2S9Z5qbqBt-aG8dULt8B6uQIjQGAN-U/edit?usp=sharing",
+#                            sheet= "General",
+#                            range="A14:D49",
+#                            col_types= "c") %>% select("Input"=1, "Name"=3, "Value"=4) 
+
+general.inputs <- CollectGsheetData_rmd(connection = str_replace(country, # define connection
+                                              pattern = " ",
+                                              replacement = ""),
+                  table_name = scenario_run,
+                  na.rm.value = FALSE) %>%
+  collect() %>% filter(category == "Time lag effects") %>% select("Input"=1, "Name"=3, "Value"=4) 
+```
+
+
+```{r}
+# reading the descrisption names
+# model_descrp <- read_excel(here("report", 
+#                                 "Summary.Reports",
+#                                 "mode_inputs_descriptions.xlsx")) %>% 
+#   select(Name, full_name) %>% na.omit()
+
+
+model_descrp <- CollectGsheetData_rmd(connection = "inputs_descriptions",
+                  table_name = "inputs_descriptions",
+                  na.rm.value = FALSE) %>% collect()
+
+
+model.inputs_SQL_new <- model.inputs_SQL %>% 
+  left_join(model_descrp, 
+            by = c("name" = "Name")) %>% 
+  select(Input, full_name, Value, Source) %>% 
+  slice(1:752) %>% 
+  mutate(
+    Source = replace(Source, which(full_name %in% c("Mean average age of men with a hip fracture",
+                                                    "Mean average age of women with a hip fracture")), "") # ONLY for Russia
+  )
+
+row_ids_SQL <- model.inputs_SQL_new %>% tibble::rowid_to_column(var = "row.index") %>% filter(is.na(full_name)) %>% pull(row.index)
+
+
+```
+
+
+```{r, message=FALSE}
+# # tired refracture risk group (combine with model inputs)
+# # using SQL database
+# tiered_grp_SQL <- CollectGsheetData_rmd(connection = str_replace(country, # define connection
+#                                               pattern = " ",
+#                                               replacement = ""),
+#                   table_name = scenario_run,
+#                   na.rm.value = FALSE) %>%
+#   collect() %>% tibble::rowid_to_column(var = "row.index") %>% 
+#   slice(600:607) %>% select(-row.index) %>% 
+#   select("Input" = 1, "full_name" = 2, Value = 4, "Source" = 5) 
+
+```
+
+---
+subtitle: "`r paste(input_title, "Model Inputs Report", sep = " - ")`"
+---
+
+
+```{r}
+# Preparing data for various chapters/table of contents
+content_1 <- model.inputs_SQL_new %>% 
+  slice(1:11) %>% bind_rows(
+    model.inputs_SQL %>% slice(751:757) %>% 
+  select(Input, full_name = 3, Value, Source)
+  ) %>% 
+  mutate(
+    Value = replace(Value, which(is.na(Input) & is.na(full_name)), NA_character_),
+    Input = replace(Input, which(is.na(Input) & is.na(full_name)), "Cohort sizes")
+  )
+
+
+
+```
+
+
+# \hspace{7cm} Clinical and epidemiological inputs
+
+## Epidemiology of fractures
+```{r}
+# # always include the tiered fracture risk
+# use.risk.profiles <-  1
+# 
+# if (use.risk.profiles == 0){
+#   model.inputs_SQL_new %>% select(Input, Name = full_name, Value, Source) %>%
+#   replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+#   kable(longtable = T) %>% kable_paper("hover") %>%
+#   kable_styling(bootstrap_options = c("striped", "scale_down"),
+#                 font_size = 13, position = "left") %>%
+#   row_spec(row = 0, font_size = 16, bold = T) %>%
+#   row_spec(row = row_ids_SQL, italic = T,
+#            background = "#e7e7b1", font_size = 14, bold = T)
+# } else {
+# bind_rows(
+#     model.inputs_SQL_new,
+#     #tiered_grp_SQL
+#   ) 
+
+# model.inputs_SQL_new %>% select(Input, Name = full_name, Value, Source) %>%
+#   replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+#   kable(longtable = T) %>% 
+#   kable_styling(latex_options = c("scale_down", "repeat_header"),
+#                 font_size = 11, position = "left",
+#                 repeat_header_text = "") %>%
+#   row_spec(row = 0, font_size = 13, bold = T) %>%
+#   row_spec(row = c(row_ids_SQL), italic = T,
+#            background = "#e7e7b1", font_size = 12, bold = T) %>% 
+#     column_spec(c(1,2), width = "12em") %>% 
+#     column_spec(3, width = "5em") %>% 
+#     column_spec(4, width = "20em")
+# }
+
+content_1 %>%
+  rename(Name = full_name) %>% 
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = c(1,12), italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T) %>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+
+
+\newpage
+
+## Risk of re-fractures
+
+```{r}
+# highlight rows (1)
+model.inputs_SQL_new %>% 
+  slice(12:48) %>%
+  rename(Name = full_name) %>% 
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = 1, italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T) %>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+
+\newpage
+
+## Treatment practice
+```{r}
+# 
+model.inputs_SQL_new %>% 
+  slice(49:181) %>% 
+  rename(Name = full_name) %>% 
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = 1, italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T) %>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+\newpage
+
+## Medication
+### Medications after 1y of romo
+```{r}
+model.inputs_SQL_new %>% 
+  slice(182:215) %>% 
+  rename(Name = full_name) %>% 
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = 1, italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T) %>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+\newpage
+
+### Medications after 2y of abaloparatide
+```{r}
+model.inputs_SQL_new %>% 
+  slice(216:248) %>% 
+  rename(Name = full_name) %>% 
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = 1, italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T) %>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+\newpage
+
+### Medications after 2y of teriparatide
+```{r}
+model.inputs_SQL_new %>% 
+  slice(249:281) %>% 
+  rename(Name = full_name) %>% 
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = 1, italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T) %>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+
+
+\newpage
+
+## Probability of being identified
+```{r}
+model.inputs_SQL_new %>% 
+  slice(282:288) %>% 
+  rename(Name = full_name) %>% 
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = 1, italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T) %>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+
+\newpage
+
+## Time to treatment onset
+```{r}
+model.inputs_SQL_new %>% 
+  slice(289:295) %>% 
+  rename(Name = full_name) %>% 
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = 1, italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T) %>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+
+\newpage
+
+## Effect of medications on risk of subsequent fracture
+```{r}
+model.inputs_SQL_new %>% 
+  slice(296:326) %>% 
+  rename(Name = full_name) %>% 
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = 1, italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T) %>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+
+\newpage
+
+## Primary adherence
+```{r}
+model.inputs_SQL_new %>% 
+  slice(327:447) %>% 
+  rename(Name = full_name) %>% 
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = 1, italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T) %>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+
+\newpage
+
+## Monitoring
+```{r}
+model.inputs_SQL_new %>% 
+  slice(448:472) %>% 
+  rename(Name = full_name) %>% 
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = 1, italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T) %>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+
+\newpage
+
+## Adherence
+```{r}
+model.inputs_SQL_new %>% 
+  slice(473:549) %>% 
+  rename(Name = full_name) %>% 
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = 1, italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T) %>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+
+\newpage
+
+## Annual decline in adherence (between months 25 and 60)
+```{r}
+model.inputs_SQL_new %>% 
+  slice(550:578) %>% 
+  rename(Name = full_name) %>% 
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = 1, italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T) %>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+
+\newpage
+
+## Risk of mortality
+
+```{r}
+model.inputs_SQL_new %>% 
+  slice(579:598) %>% 
+  rename(Name = full_name) %>% 
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = 1, italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T) %>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+
+<!-- \newpage -->
+
+<!-- ## Tiered re-fracture risk -->
+<!-- ```{r} -->
+<!-- model.inputs_SQL_new %>%  -->
+<!--   slice(599:715) %>%  -->
+<!--   rename(Name = full_name) %>%  -->
+<!--   replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>% -->
+<!--   kable(longtable = T) %>%  -->
+<!--   kable_styling(latex_options = c("scale_down", "repeat_header"), -->
+<!--                 font_size = 11, position = "left", -->
+<!--                 repeat_header_text = "") %>% -->
+<!--   row_spec(row = 0, font_size = 13, bold = T) %>% -->
+<!--   row_spec(row = 1, italic = T, -->
+<!--            background = "#e7e7b1", font_size = 12, bold = T) %>%  -->
+<!--     column_spec(c(1,2), width = "12em") %>%  -->
+<!--     column_spec(3, width = "5em") %>%  -->
+<!--     column_spec(4, width = "20em") -->
+<!-- ``` -->
+
+<!-- \newpage -->
+
+<!-- ## Treatment rate by risk tier -->
+<!-- ```{r} -->
+<!-- model.inputs_SQL_new %>%  -->
+<!--   slice(716:752) %>%  -->
+<!--   rename(Name = full_name) %>%  -->
+<!--   replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>% -->
+<!--   kable(longtable = T) %>%  -->
+<!--   kable_styling(latex_options = c("scale_down", "repeat_header"), -->
+<!--                 font_size = 11, position = "left", -->
+<!--                 repeat_header_text = "") %>% -->
+<!--   row_spec(row = 0, font_size = 13, bold = T) %>% -->
+<!--   row_spec(row = 1, italic = T, -->
+<!--            background = "#e7e7b1", font_size = 12, bold = T) %>%  -->
+<!--     column_spec(c(1,2), width = "12em") %>%  -->
+<!--     column_spec(3, width = "5em") %>%  -->
+<!--     column_spec(4, width = "20em") -->
+<!-- ``` -->
+
+
+\newpage
+
+# \hspace{7cm} Resource use and cost inputs
+
+```{r}
+# rows to exclude
+exclude <- c(200:206,207:215, 216:222, 254:258)
+
+cost_rows <- c(1,2,6,15,19,27,29,33,38,40,41,94,147,200,231,247,251,264,271)
+
+# costs.inputs %>%
+#   slice(-exclude) %>% view()
+#   select(Input, Name = Description, Value, Source) %>%
+#   replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+#   kable(longtable = T) %>% 
+#   kable_styling(latex_options = c("scale_down", "repeat_header"),
+#                 font_size = 11, position = "left",
+#                 repeat_header_text = "") %>%
+#   row_spec(row = 0, font_size = 13, bold = T) %>%
+#   row_spec(row = cost_rows, italic = T,
+#            background = "#e7e7b1", font_size = 12, bold = T)%>% 
+#     column_spec(c(1,2), width = "12em") %>% 
+#     column_spec(3, width = "5em") %>% 
+#     column_spec(4, width = "20em")
+```
+
+## Treatment following fracture
+
+```{r}
+costs.inputs %>% 
+  slice(-exclude) %>% 
+  slice(2:26) %>% 
+    select(Input, Name = Description, Value, Source) %>%
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = c(1,5,8,14,18), italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T)%>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+
+
+\newpage
+## Hospital length of stay (for those admitted)
+
+```{r}
+costs.inputs %>% 
+  slice(-exclude) %>% 
+  slice(19:26) %>% 
+    select(Input, Name = Description, Value, Source) %>%
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = 1, italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T)%>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+
+
+\newpage
+## Number of community consultations for spine fractures not seen in hospital
+```{r}
+costs.inputs %>% 
+  slice(-exclude) %>% 
+  slice(27:28)%>% 
+    select(Input, Name = Description, Value, Source) %>%
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = 1, italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T)%>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+
+
+\newpage
+## Hospital costs - Generic
+```{r}
+costs.inputs %>% 
+  slice(-exclude) %>% 
+  slice(29:32)%>% 
+    select(Input, Name = Description, Value, Source) %>%
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = 1, italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T)%>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+
+
+\newpage
+## Hospital costs - Site specific
+```{r}
+costs.inputs %>% 
+  slice(-exclude) %>% 
+  slice(33:37)%>% 
+    select(Input, Name = Description, Value, Source) %>%
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = 1, italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T)%>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+
+
+\newpage
+## Community care costs
+```{r}
+costs.inputs %>% 
+  slice(-exclude) %>% 
+  slice(38:39)%>% 
+    select(Input, Name = Description, Value, Source) %>%
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = 1, italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T)%>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+
+
+\newpage
+## Average time spent by stage
+```{r}
+costs.inputs %>% 
+  slice(-exclude) %>% 
+  slice(41:199)%>% 
+    select(Input, Name = Description, Value, Source) %>%
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = c(1, 54, 107), italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T)%>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+
+\newpage
+## Medication yearly costs
+```{r}
+costs.inputs %>% 
+  slice(-exclude) %>% 
+  slice(200:230)%>% 
+    select(Input, Name = Description, Value, Source) %>%
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = 1, italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T)%>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+
+
+\newpage
+## Discharge destination by fracture site
+```{r}
+costs.inputs %>% 
+  slice(-exclude) %>% 
+  slice(231:246)%>% 
+    select(Input, Name = Description, Value, Source) %>%
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = 1, italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T)%>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+
+
+\newpage
+## Temporary rehab- average length of stay
+```{r}
+costs.inputs %>% 
+  slice(-exclude) %>% 
+  slice(247:250)%>% 
+    select(Input, Name = Description, Value, Source) %>%
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = 1, italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T)%>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+
+
+
+\newpage
+## Destination after temporary rehab
+```{r}
+costs.inputs %>% 
+  slice(-exclude) %>% 
+  slice(251:263)%>% 
+    select(Input, Name = Description, Value, Source) %>%
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = 1, italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T)%>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+
+\newpage
+## Average number of clinic (outpatient) vists following..
+
+```{r}
+costs.inputs %>% 
+  slice(-exclude) %>% 
+  slice(264:270)%>% 
+    select(Input, Name = Description, Value, Source) %>%
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = 1, italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T)%>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+
+\newpage
+## Costs after discharge
+```{r}
+costs.inputs %>% 
+  slice(-exclude) %>% 
+  slice(271:275)%>% 
+    select(Input, Name = Description, Value, Source) %>%
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = 1, italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T)%>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+
+
+
+\newpage
+
+## Staff costs 
+```{r}
+costs.inputs %>% 
+  slice(200:206) %>% 
+  add_row(.after = 0) %>% 
+  mutate(
+    Input = replace(Input, which(is.na(Value)&is.na(Description)), "Staff cost"),
+    Input = replace(Input, which(Input == "Staff costs"), "")
+  ) %>% 
+  select(Input, Name = Description, Value, Source) %>%
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = 1, italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T)%>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+
+\newpage
+
+## Laboratory tests
+```{r}
+costs.inputs %>% 
+  slice(207:215) %>%
+  add_row(.after = 0) %>% 
+  mutate(
+    Input = replace(Input, which(is.na(Value)&is.na(Description)), "Proportions"),
+    Input = replace(Input, which(Input == "Laboratory tests - proportions"), NA_character_)
+  ) %>%
+  add_row(.after = 7) %>% 
+  mutate(
+    Input = replace(Input, which(is.na(Value)&is.na(Input)), "Costs"),
+    Input = replace(Input, which(Input == "Laboratory tests - costs"), NA_character_)
+  ) %>% 
+  select(Input, Name = Description, Value, Source) %>%
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = c(1,8), italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T)%>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+
+\newpage
+
+## DXA scans
+```{r}
+costs.inputs %>% 
+  slice(216:222)%>%
+  add_row(.after = 0) %>% 
+  mutate(
+    Input = replace(Input, which(is.na(Value)&is.na(Description)), "Proportions"),
+    Input = replace(Input, which(Input == "DXA- proportions"), NA_character_)
+  ) %>%
+  add_row(.after = 7) %>% 
+  mutate(
+    Input = replace(Input, which(is.na(Value)&is.na(Input)), "Costs"),
+    Input = replace(Input, which(Input == "DXA - cost"), NA_character_)
+  )  %>% 
+  select(Input, Name = Description, Value, Source) %>%
+  replace_na(replace = list(Input = "", Name = "", Value = "", Source = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = c(1,8), italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T)%>% 
+    column_spec(c(1,2), width = "12em") %>% 
+    column_spec(3, width = "5em") %>% 
+    column_spec(4, width = "20em")
+```
+
+
+
+\newpage
+
+# \hspace{7cm} General (non country-specific) inputs
+
+```{r}
+general.inputs %>% 
+  add_row(.after = 0) %>%
+   mutate(
+    Input = replace(Input, which(is.na(Value)&is.na(Name)), "Medications")
+  ) %>%
+  replace_na(replace = list(Input = "", Name = "", Value = "")) %>%
+  kable(longtable = T) %>% 
+  kable_styling(latex_options = c("scale_down", "repeat_header"),
+                font_size = 11, position = "left",
+                repeat_header_text = "") %>%
+  row_spec(row = 0, font_size = 13, bold = T) %>%
+  row_spec(row = 1, italic = T,
+           background = "#e7e7b1", font_size = 12, bold = T)%>% 
+    column_spec(1, width = "15em") %>% 
+    column_spec(2, width = "28em") %>% 
+  column_spec(3, width = "5em") 
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

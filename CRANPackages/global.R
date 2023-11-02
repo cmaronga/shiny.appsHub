@@ -12,14 +12,14 @@ library(rvest)
 #Specifying the url for desired website to be scraped
 url <- 'https://cran.r-project.org/web/packages/available_packages_by_date.html'
 
-#Reading the HTML code from the website
+# Reading the HTML code from the website
 webpage <- read_html(url)
 
 
 # Date published ----------
 date_published <- html_nodes(webpage,'td:nth-child(1)')
 
-#C onverting the ranking data to text
+# Converting the ranking data to text
 date_published_data <- html_text(date_published)
 
 # Name of package ----------

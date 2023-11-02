@@ -20,3 +20,5 @@ I have worked for many years in Clinical trials and observational studies Data M
 | 2020-11-21          | [NewLabReports](https://github.com/ChristopherMaronga/shiny.appsHub/tree/main/NewLabReports)       | No                 | Lab reports and views                          |
 | 2020-12-04          | [SubStudyReports](https://github.com/ChristopherMaronga/shiny.appsHub/tree/main/SubStudyReports)   | No                 | Reports and Query management                   |
 | 2021-04-14          | [SampleRepo](https://github.com/ChristopherMaronga/shiny.appsHub/tree/main/SampleRepo)             | No                 | Laboratory sample repository                   |
+| 2022-05-21          | [OxUni-FLSModelInputs-RShiny](https://github.com/ChristopherMaronga/shiny.appsHub/tree/main/OxUni-FLSModelInputs-RShiny)             | No                 | FLS model inputs curation app                   |
+| 2022-07-10          | [hospital-level-app](https://github.com/ChristopherMaronga/shiny.appsHub/tree/main/hospital-level-app)             | No                 | Hospital level model results                   |
